@@ -1412,11 +1412,40 @@ const ResourcePool = {
     }
 };
 
+const HUECOS_RACKS = {
+  // Ejemplo: en el rack B, sección 5, nivel 0 y 1 (los dos primeros niveles) no hay cajas
+  'B': {
+    1: [0, 1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+  },
+    'D': {
+    1: [0, 1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+  },
+  'F': {
+    1: [0, 1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+  },
+   'H': {
+    1: [0, 1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+  },
+    'J': {
+    4: [ 0,1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+    5: [0,1,2,3]
+  },
+    'L': {
+    4: [ 0,1,2,3], // sección 5, niveles 0 y 1 (índice base 0)
+    5: [0,1,2,3] // sección 5, niveles 0 y 1 (índice base 0)
+  }
 
-const SECCIONES_CON_3_PALETS = {
-  'B': [1], // Ejemplo: Rack A, sección 10 tendrá 3 palets
-  'D': [1], // Puedes agregar más: 'B': [5, 7], etc.
-  'F': [1]
+  // Puedes agregar más racks y secciones según tu necesidad
+};
+const PALETS_POR_SECCION = {
+   'B': [3,2,2,2,2,2,2,2,2],
+   'D': [3,2,2,2,2,2,2,2,2],
+   'F': [3,2,2,2,2,2,2,2,2],
+   'H': [3,2,2,2,2,2,2,2,2],
+   'J': [2,2,2,1,3,2,2,2,2,2,2,2,2],
+   'L': [2,2,2,1,3,2,2,2,2,2,2,2,2],
+
+
 };
 
 function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara = true, numeroSecciones = null) {
@@ -1425,8 +1454,7 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     const posZ = posicionInicial.z;
 
     const rack = new THREE.Group();
-    rack.position.set(posInicioX, 0, posZ);
-
+    
     // 2. Pre-cálculo de dimensiones
     const anchuraRack = config.cellSizeX * longitud;
     const espacioEntreNiveles = config.alturaCaja + 0.2;
@@ -1438,19 +1466,23 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     const configPalets = {
         ancho: 0.9,
         separacion: 0.3,
-        margenSeccion: 0.3
+        margenSeccion: 0.1
     };
 
     // 4. Calcular ancho de cada sección según el número de palets de esa sección
     numeroSecciones = numeroSecciones || 10;
+    let paletsPorSeccionArrayOriginal = PALETS_POR_SECCION[letraRack] || Array(numeroSecciones).fill(2);
     let paletsPorSeccionArray = [];
     let anchoSeccionArray = [];
     let totalAnchoRack = 0;
 
     for (let seccion = 0; seccion < numeroSecciones; seccion++) {
-        // Por defecto 2 palets por sección
-        let paletsEnEstaSeccion = 2;
+        let paletsEnEstaSeccion = paletsPorSeccionArrayOriginal[seccion];
         // Si esta sección debe tener 3 palets, cámbialo aquí:
+
+        
+
+        
         if (
             typeof SECCIONES_CON_3_PALETS !== 'undefined' &&
             SECCIONES_CON_3_PALETS[letraRack] &&
@@ -1474,6 +1506,13 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     const anchuraRackAjustada = totalAnchoRack;
     const halfAncho = anchuraRackAjustada / 2;
 
+    // *** CAMBIO PRINCIPAL: Alinear por la pared trasera ***
+    // Para racks doble cara: centrar para que la parte trasera esté en la pared
+    // Para racks una cara: posicionar para que la parte trasera esté en la pared
+    const posicionRackX = posInicioX - halfAncho; // Alineación por el lado opuesto
+
+    rack.position.set(posicionRackX, 0, posZ);
+
     // 5. Geometrías compartidas
     const postGeometry = new THREE.BoxBufferGeometry(0.15, 1, 0.15);
     const beamGeometry = new THREE.BoxBufferGeometry(1, 0.08, 0.08);
@@ -1482,9 +1521,12 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     let xPosAcumulado = -halfAncho;
     for (let seccion = 0; seccion <= numeroSecciones; seccion++) {
         const xPos = xPosAcumulado;
+        // Para racks de una cara, ajustar la posición Z del poste
+        const posZPoste = dobleCara ? -halfProf : -profundidadRack + 0.075; // Poste en la pared trasera para una cara
+        
         const posteFrontal = new THREE.Mesh(postGeometry, sharedMaterials.rackPost);
         posteFrontal.scale.set(1, alturaRack, 1);
-        posteFrontal.position.set(xPos, alturaRack / 2, -halfProf);
+        posteFrontal.position.set(xPos, alturaRack / 2, posZPoste);
         rack.add(posteFrontal);
 
         if (dobleCara) {
@@ -1499,52 +1541,79 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     }
 
     // 7. Creación de travesaños y palets
-    for (let nivel = 0; nivel < niveles; nivel++) {
-        const alturaActual = nivel * espacioEntreNiveles;
+  for (let nivel = 0; nivel < niveles; nivel++) {
+    const alturaActual = nivel * espacioEntreNiveles;
+    let xPosAcumuladoPalet = -halfAncho;
+    for (let seccion = 0; seccion < numeroSecciones; seccion++) {
+        // Saltar barra y palets si es hueco
+        if (
+            HUECOS_RACKS[letraRack] &&
+            HUECOS_RACKS[letraRack][seccion + 1] &&
+            HUECOS_RACKS[letraRack][seccion + 1].includes(nivel)
+        ) {
+            xPosAcumuladoPalet += anchoSeccionArray[seccion];
+            continue;
+        }
 
-        const travesanoFrontal = new THREE.Mesh(beamGeometry, sharedMaterials.rackBeam);
-        travesanoFrontal.scale.set(anchuraRackAjustada + 0.1, 1, 1);
-        travesanoFrontal.position.set(0, alturaActual, -halfProf);
-        rack.add(travesanoFrontal);
+        // NO INVERTIR EL ÍNDICE
+        const anchoSeccion = anchoSeccionArray[seccion];
+        const paletsPorSeccionActual = paletsPorSeccionArray[seccion];
+        const inicioSeccion = xPosAcumuladoPalet;
+
+        // Barra frontal
+        const posXBarra = inicioSeccion + anchoSeccion / 2;
+        const posYBarra = alturaActual;
+        const posZBarra = dobleCara ? -halfProf : -profundidadRack + 0.04;
+
+        const barraFrontal = new THREE.Mesh(beamGeometry, sharedMaterials.rackBeam);
+        barraFrontal.scale.set(anchoSeccion, 1, 1);
+        barraFrontal.position.set(posXBarra, posYBarra, posZBarra);
+        rack.add(barraFrontal);
 
         if (dobleCara) {
-            const travesanoTrasero = new THREE.Mesh(beamGeometry, sharedMaterials.rackBeam);
-            travesanoTrasero.scale.set(anchuraRackAjustada + 0.1, 1, 1);
-            travesanoTrasero.position.set(0, alturaActual, halfProf);
-            rack.add(travesanoTrasero);
+            const barraTrasera = new THREE.Mesh(beamGeometry, sharedMaterials.rackBeam);
+            barraTrasera.scale.set(anchoSeccion, 1, 1);
+            barraTrasera.position.set(posXBarra, posYBarra, halfProf);
+            rack.add(barraTrasera);
         }
 
         // Palets por sección
-        let xPosAcumuladoPalet = -halfAncho;
-        for (let seccion = 0; seccion < numeroSecciones; seccion++) {
-            let paletsPorSeccionActual = paletsPorSeccionArray[seccion];
-            let anchoSeccion = anchoSeccionArray[seccion];
-            let inicioSeccion = xPosAcumuladoPalet;
+        const espacioNecesario = (2 * configPalets.margenSeccion) +
+            (paletsPorSeccionActual * configPalets.ancho) +
+            ((paletsPorSeccionActual - 1) * configPalets.separacion);
 
-            // Calcular espacio necesario
-            const espacioNecesario = (2 * configPalets.margenSeccion) +
-                (paletsPorSeccionActual * configPalets.ancho) +
-                ((paletsPorSeccionActual - 1) * configPalets.separacion);
-
-            let anchoPalet, separacion, margenAjustado;
-            if (espacioNecesario <= anchoSeccion) {
-                anchoPalet = configPalets.ancho;
-                separacion = configPalets.separacion;
-                margenAjustado = configPalets.margenSeccion + ((anchoSeccion - espacioNecesario) / 2);
-            } else {
-                separacion = 0.1;
-                anchoPalet = (anchoSeccion - (2 * 0.1) - ((paletsPorSeccionActual - 1) * separacion)) / paletsPorSeccionActual;
-                margenAjustado = 0.1;
-            }
-
-            for (let i = 0; i < paletsPorSeccionActual; i++) {
-                const posX = inicioSeccion + margenAjustado + (i * (anchoPalet + separacion)) + (anchoPalet / 2);
-                crearPaletMejorado(rack, posX, alturaActual, halfProf - 0.2, anchoPalet); // Cara frontal
-                if (dobleCara) crearPaletMejorado(rack, posX, alturaActual, -halfProf + 0.2, anchoPalet); // Cara trasera
-            }
-            xPosAcumuladoPalet += anchoSeccion;
+        let anchoPalet, separacion, margenAjustado;
+        if (espacioNecesario <= anchoSeccion) {
+            anchoPalet = configPalets.ancho;
+            separacion = configPalets.separacion;
+            margenAjustado = configPalets.margenSeccion + ((anchoSeccion - espacioNecesario) / 2);
+        } else {
+            separacion = 0.1;
+            anchoPalet = (anchoSeccion - (2 * 0.1) - ((paletsPorSeccionActual - 1) * separacion)) / paletsPorSeccionActual;
+            margenAjustado = 0.1;
         }
+
+        for (let i = 0; i < paletsPorSeccionActual; i++) {
+          const posX = inicioSeccion + margenAjustado + (i * (anchoPalet + separacion)) + (anchoPalet / 2);
+
+          let posZPalet;
+          if (dobleCara) {
+              posZPalet = halfProf - 0.2; // doble cara: palet frontal
+          } else {
+              // Si es rack N (último), invertir el Z para que mire al pasillo (Z negativo)
+              posZPalet = (letraRack === 'N') ? -halfProf + 0.2 : 0;
+          }
+
+          crearPaletMejorado(rack, posX, alturaActual, posZPalet, anchoPalet);
+
+          // Si doble cara, crear palet en la otra cara
+          if (dobleCara) {
+              crearPaletMejorado(rack, posX, alturaActual, -halfProf + 0.2, anchoPalet);
+          }
+      }
+        xPosAcumuladoPalet += anchoSeccion;
     }
+}
 
     // 8. Etiqueta y metadatos
     crearEtiquetaRack(rack, letraRack, anchuraRackAjustada, alturaRack, halfProf);
@@ -1552,7 +1621,7 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     rack.userData = {
         tipoObjeto: 'rack',
         letra: letraRack,
-        posInicio: { x: posInicioX - halfAncho, z: posZ },
+        posInicio: { x: posicionRackX - halfAncho, z: posZ }, // Actualizar posición inicial
         longitud: anchuraRackAjustada,
         anchura: anchuraRackAjustada,
         profundidad: profundidadRack,
@@ -1572,6 +1641,9 @@ function crearRack(posicionInicial, longitud, letraRack, niveles = 8, dobleCara 
     scene.add(rack);
     return rack;
 }
+
+
+
 
 function crearEtiquetaRack(rack, letraRack, anchuraRack, alturaRack, profundidad) {
     // Crear canvas para generar la imagen del texto
@@ -1722,11 +1794,11 @@ const MAPA_RECORRIDO_EXTENDIDO = {
     racks: {
         'A': { seccionesReales: 10, dobleCara: false }, // Solo una cara
         'B': { seccionesReales: 9, dobleCara: true },  // Doble cara (B: izq, C: der)
-        'D': { seccionesReales: 10, dobleCara: true },  // Doble cara (D: izq, E: der)
-        'F': { seccionesReales: 10, dobleCara: true },  // Doble cara (F: izq, G: der)
-        'H': { seccionesReales: 10, dobleCara: true },  // Doble cara (H: izq, I: der)
-        'J': { seccionesReales: 14, dobleCara: true },  // Doble cara (J: izq, K: der)
-        'L': { seccionesReales: 14, dobleCara: true },  // Doble cara (L: izq, M: der)
+        'D': { seccionesReales: 9, dobleCara: true },  // Doble cara (D: izq, E: der)
+        'F': { seccionesReales: 9, dobleCara: true },  // Doble cara (F: izq, G: der)
+        'H': { seccionesReales: 9, dobleCara: true },  // Doble cara (H: izq, I: der)
+        'J': { seccionesReales: 13, dobleCara: true },  // Doble cara (J: izq, K: der)
+        'L': { seccionesReales: 13, dobleCara: true },  // Doble cara (L: izq, M: der)
         'N': { seccionesReales: 14, dobleCara: false }  // Solo una cara
     },
     
@@ -1936,79 +2008,6 @@ function validarEstructuraID(id) {
     return false;
 }
 
-// 6. FUNCIÓN DE EJEMPLO: Generar IDs con numeración consecutiva
-function ejemploGeneracionIDs() {
-    console.log("=== EJEMPLO DE GENERACIÓN DE IDs (NUMERACIÓN CONSECUTIVA) ===");
-    
-    // Para rack D, sección 01 como en tu ejemplo actualizado
-    const rackD = 'D';
-    const seccion01 = 1;
-    
-    console.log(`\n🏗️ Generando IDs para Rack ${rackD}, Sección ${seccion01.toString().padStart(2, '0')}:`); 
-    
-    // Generar todos los IDs para esta sección
-    const todosLosIDs = MAPA_RECORRIDO_EXTENDIDO.generarIDsPorSeccion(rackD, seccion01);
-    
-    // Mostrar por grupos lógicos
-    console.log(`\n📦 Nivel A (A1+A2 - Alturas 0 y 1):`); 
-    console.log(`   A1 (Altura 0): ${todosLosIDs.slice(0, 3).join(', ')}`);
-    console.log(`   A2 (Altura 1): ${todosLosIDs.slice(3, 6).join(', ')}`);
-    
-    console.log(`\n📦 Otros Niveles (2 palets cada uno):`);
-    const nivelesRestantes = ['B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    let indice = 6;
-    nivelesRestantes.forEach(nivel => {
-        const idsNivel = todosLosIDs.slice(indice, indice + 2);
-        console.log(`   Nivel ${nivel}: ${idsNivel.join(', ')}`);
-        indice += 2;
-    });
-    
-    // Validar algunos IDs específicos
-    console.log("\n🔍 Validación de IDs:");
-    const idsParaValidar = ['D01A01', 'D01A04', 'D01B01', 'D01C02', 'D01A07'];
-    idsParaValidar.forEach(id => {
-        const esValido = validarEstructuraID(id);
-        const info = MAPA_RECORRIDO_EXTENDIDO.parsearID(id);
-        if (info) {
-            console.log(`${id}: ${esValido ? '✅ Válido' : '❌ Inválido'} - Altura física: ${info.nivel}, Palet físico: ${info.paletFisico}`); 
-        } else {
-            console.log(`${id}: ❌ Inválido - No se pudo parsear`);
-        }
-    });
-    
-    // Ejemplo adicional con Rack C, Sección 03
-    console.log(`\n🏗️ Ejemplo adicional - Rack C, Sección 03:`);
-    const idsC03 = MAPA_RECORRIDO_EXTENDIDO.generarIDsPorSeccion('C', 3);
-    console.log(`   A1 (Altura 0): ${idsC03.slice(0, 3).join(', ')}`);
-    console.log(`   A2 (Altura 1): ${idsC03.slice(3, 6).join(', ')}`);
-    console.log(`   Nivel B: ${idsC03.slice(6, 8).join(', ')}`);
-    console.log(`   Nivel C: ${idsC03.slice(8, 10).join(', ')}`);
-}
-function generarIDDesdePosicion(rack, seccion, nivelFisico, paletFisico, lado) {
-    const seccionStr = String(seccion + 1).padStart(2, '0');
-    let idBase;
-    if (nivelFisico === 0) {
-        const paletLogico = paletFisico + 1;
-        const paletStr = String(paletLogico).padStart(2, '0');
-        idBase = `${rack}${seccionStr}A${paletStr}`;
-    } else if (nivelFisico === 1) {
-        const paletLogico = paletFisico + 4;
-        const paletStr = String(paletLogico).padStart(2, '0');
-        idBase = `${rack}${seccionStr}A${paletStr}`;
-    } else {
-        const nivelLetra = String.fromCharCode(65 + nivelFisico - 1);
-        const paletLogico = paletFisico + 1;
-        const paletStr = String(paletLogico).padStart(2, '0');
-        idBase = `${rack}${seccionStr}${nivelLetra}${paletStr}`;
-    }
-    // Añadir el lado al ID para racks doble cara
-    const rackInfo = MAPA_RECORRIDO_EXTENDIDO.racks[rack];
-    if (rackInfo && rackInfo.dobleCara) {
-        return `${idBase}${lado}`;
-    }
-    return idBase;
-}
-
 // 4. FUNCIÓN MODIFICADA: inicializarRacks (REEMPLAZA LA EXISTENTE)
 function inicializarRacks() {
     const distanciaEntreRacks = 3;
@@ -2023,7 +2022,7 @@ function inicializarRacks() {
             { x: config.primerRackX, z: posicionZActual },
             35,
             letraRack,
-            8,
+            7,
             rackInfo.dobleCara, // Aquí se usa la propiedad dobleCara
             rackInfo.seccionesReales
         );
@@ -2081,8 +2080,7 @@ function inicializarRacks() {
         }
     });
 
-    // Mostrar el esquema de recorrido
-    mostrarEsquemaRecorrido();
+    
 }
 
 
@@ -2096,141 +2094,6 @@ function calcularAnchoSeccion(paletsPorSeccion, anchoPalet, separacionPalets, ma
     return espacioPalets + (margenSeccion * 2);
 }
 
-
-// 5. FUNCIÓN NUEVA: mostrarEsquemaRecorrido
-function mostrarEsquemaRecorrido() {
-    console.log('\n🧠 ESQUEMA DEL RECORRIDO EXTENDIDO DE CAJAS');
-    console.log('==========================================');
-    
-    const racksArray = Object.keys(MAPA_RECORRIDO_EXTENDIDO.racks);
-    
-    racksArray.forEach((rackFisico, index) => {
-        const rackConfig = MAPA_RECORRIDO_EXTENDIDO.racks[rackFisico];
-        console.log(`\n--- RACK ${rackFisico} (${rackConfig.dobleCara ? 'Doble cara' : 'Una cara'}) ---`);
-        
-        // Mostrar cara izquierda/frontal
-        console.log('  Cara Izquierda (A):');
-        for (let seccion = 1; seccion <= rackConfig.seccionesReales; seccion++) {
-            const logico = MAPA_RECORRIDO_EXTENDIDO.calcularRackLogico(rackFisico, seccion, 'A');
-            const idEjemplo = `${logico.rack}${String(logico.seccion).padStart(2, '0')}A01`;
-            console.log(`    Sección ${seccion}: ${idEjemplo}`);
-        }
-        
-        // Mostrar cara derecha si existe
-        if (rackConfig.dobleCara) {
-            console.log('  Cara Derecha (B):');
-            for (let seccion = 1; seccion <= rackConfig.seccionesReales; seccion++) {
-                const logico = MAPA_RECORRIDO_EXTENDIDO.calcularRackLogico(rackFisico, seccion, 'B');
-                const idEjemplo = `${logico.rack}${String(logico.seccion).padStart(2, '0')}A01`;
-                console.log(`    Sección ${seccion}: ${idEjemplo}`);
-            }
-        }
-    });
-    
-    console.log('\n📊 RESUMEN DE LA LÓGICA:');
-    console.log('• Rack A: solo cara frontal con sus propias secciones (A01-A17)');
-    console.log('• Rack B: cara izq. continúa A (A18-A34), cara der. inicia B (B01-B17)');
-    console.log('• Rack C: cara izq. continúa B (B18-B34), cara der. inicia C (C01-C17)');
-    console.log('• Y así sucesivamente...');
-}
-
-// 6. FUNCIÓN NUEVA: validarIDExtendido
-function validarIDExtendido(id) {
-    if (!id || !id.match(/^[A-Z]\d{2}[A-Z]\d{2}$/)) {
-        return { valido: false, razon: 'Formato de ID inválido' };
-    }
-    
-    const rackLogico = id.charAt(0);
-    const seccionLogica = parseInt(id.substring(1, 3));
-    
-    // Verificar que el rack lógico existe
-    if (!MAPA_RECORRIDO_EXTENDIDO.racks[rackLogico]) {
-        return { valido: false, razon: `Rack lógico ${rackLogico} no existe` };
-    }
-    
-    // Calcular posición física y verificar que sea válida
-    const posicionFisica = MAPA_RECORRIDO_EXTENDIDO.calcularPosicionFisica(rackLogico, seccionLogica);
-    const rackFisicoConfig = MAPA_RECORRIDO_EXTENDIDO.racks[posicionFisica.rack];
-    
-    if (!rackFisicoConfig) {
-        return { valido: false, razon: `Rack físico ${posicionFisica.rack} no existe` };
-    }
-    
-    // Verificar que la sección física está en rango
-    if (posicionFisica.seccion < 0 || posicionFisica.seccion >= rackFisicoConfig.seccionesReales) {
-        return { valido: false, razon: `Sección fuera de rango en rack ${posicionFisica.rack}` };
-    }
-    
-    // Verificar que el lado es válido para ese rack
-    if (posicionFisica.lado === 'B' && !rackFisicoConfig.dobleCara) {
-        return { valido: false, razon: `Rack ${posicionFisica.rack} no tiene cara trasera` };
-    }
-    
-    return { 
-        valido: true, 
-        posicionFisica: posicionFisica,
-        info: `ID ${id} → Rack físico ${posicionFisica.rack}, Sección ${posicionFisica.seccion + 1}, Lado ${posicionFisica.lado}` 
-    };
-}
-
-// 7. FUNCIÓN NUEVA: convertirIDsExistentes
-function convertirIDsExistentes(arrayDatos) {
-    console.log('\n🔄 CONVIRTIENDO IDs AL SISTEMA EXTENDIDO');
-    console.log('=====================================');
-    
-    let convertidos = 0;
-    let errores = 0;
-    
-    arrayDatos.forEach((item, index) => {
-        if (item.id) {
-            const validacion = validarIDExtendido(item.id);
-            if (validacion.valido) {
-                console.log(`✅ ${item.id} - ${validacion.info}`);
-                convertidos++;
-            } else {
-                console.log(`❌ ${item.id} - ${validacion.razon}`);
-                errores++;
-            }
-        }
-    });
-    
-    console.log(`\n📈 Resultado: ${convertidos} IDs válidos, ${errores} errores`);
-    return { convertidos, errores };
-}
-
-// 8. FUNCIÓN NUEVA: generarEjemplosRecorrido
-function generarEjemplosRecorrido() {
-    console.log('\n📚 EJEMPLOS DE IDs SEGÚN EL RECORRIDO EXTENDIDO');
-    console.log('=============================================');
-    
-    // Ejemplos por rack
-    const ejemplos = [
-        // Rack A (solo cara frontal)
-        { descripcion: 'Rack A, Sección 1, Cara frontal', id: 'A01A01' },
-        { descripcion: 'Rack A, Sección 17, Cara frontal', id: 'A17A01' },
-        
-        // Rack B
-        { descripcion: 'Rack B, Sección 1, Cara izq. (continúa A)', id: 'A18A01' },
-        { descripcion: 'Rack B, Sección 17, Cara izq. (continúa A)', id: 'A34A01' },
-        { descripcion: 'Rack B, Sección 1, Cara der. (inicia B)', id: 'B01A01' },
-        { descripcion: 'Rack B, Sección 17, Cara der. (inicia B)', id: 'B17A01' },
-        
-        // Rack C
-        { descripcion: 'Rack C, Sección 1, Cara izq. (continúa B)', id: 'B18A01' },
-        { descripcion: 'Rack C, Sección 17, Cara izq. (continúa B)', id: 'B34A01' },
-        { descripcion: 'Rack C, Sección 1, Cara der. (inicia C)', id: 'C01A01' },
-        { descripcion: 'Rack C, Sección 17, Cara der. (inicia C)', id: 'C17A01' }
-    ];
-    
-    ejemplos.forEach(ejemplo => {
-        const validacion = validarIDExtendido(ejemplo.id);
-        const estado = validacion.valido ? '✅' : '❌';
-        console.log(`${estado} ${ejemplo.descripcion}: ${ejemplo.id}`);
-        if (validacion.valido) {
-            console.log(`    → ${validacion.info}`);
-        }
-    });
-}
 
 
 function obtenerRackFisicoYLado(letraID) {
@@ -2259,17 +2122,42 @@ function obtenerRackFisicoYLado(letraID) {
     return null;
 }
 
+
+/**
+ * Dado un índice de palet secuencial, encuentra la sección y el índice dentro de la sección.
+ * @param {number[]} paletsPorSeccionArray - Array con la cantidad de palets por sección.
+ * @param {number} paletSecuencial - Índice de palet (empezando en 0).
+ * @returns {{seccion: number, paletEnSeccion: number}}
+ */
+function encontrarSeccionYPalet(paletsPorSeccionArray, paletSecuencial) {
+  let acumulado = 0;
+  for (let seccion = 0; seccion < paletsPorSeccionArray.length; seccion++) {
+    const paletsEnEsta = paletsPorSeccionArray[seccion];
+    if (paletSecuencial < acumulado + paletsEnEsta) {
+      return {
+        seccion: seccion,
+        paletEnSeccion: paletSecuencial - acumulado
+      };
+    }
+    acumulado += paletsEnEsta;
+  }
+  // Si no se encuentra, devolver la última sección
+  return {
+    seccion: paletsPorSeccionArray.length - 1,
+    paletEnSeccion: paletsPorSeccionArray[paletsPorSeccionArray.length - 1] - 1
+  };
+}
+
+
 // Función mejorada para obtener la posición correcta de las cajas según rack y cara
 function obtenerPosicionDesdeDatos(item) {
+    // Usa la lógica de rack físico y lado
     const infoID = MAPA_RECORRIDO_EXTENDIDO.parsearID(item.id);
     if (!infoID) return { x: 0, y: 0, z: 0 };
 
     // Usar la función de mapeo para encontrar el rack físico y lado correcto
     const rackYLado = obtenerRackFisicoYLado(infoID.rack);
-    if (!rackYLado) {
-        console.error(`No se encontró el rack físico para la letra ${infoID.rack}`);
-        return { x: 0, y: 0, z: 0 };
-    }
+    if (!rackYLado) return { x: 0, y: 0, z: 0 };
     const rackFisico = rackYLado.rackFisico;
     const lado = rackYLado.lado;
 
@@ -2278,36 +2166,35 @@ function obtenerPosicionDesdeDatos(item) {
         obj.userData?.tipoObjeto === 'rack' &&
         obj.userData?.letra === rackFisico
     );
-    if (!rackObj) {
-        console.error(`No se encontró el rack físico ${rackFisico}`);
-        return { x: 0, y: 0, z: 0 };
-    }
+    if (!rackObj) return { x: 0, y: 0, z: 0 };
 
-    // --- CAMBIO PRINCIPAL: usar anchoSeccionArray y paletsPorSeccionArray ---
     const rackData = rackObj.userData;
-    const numSecciones = rackData.numeroSecciones || rackData.secciones;
-    // Determinar la sección física (ajustar si es cara A)
-   let seccionValida = Math.max(0, Math.min(infoID.seccion - 1, numSecciones - 1));
-    seccionValida = numSecciones - seccionValida - 1; // <-- Solo si tu frente visual es el opuesto
+    const paletsPorSeccionArray = rackData.paletsPorSeccionArray;
 
-    const anchoSeccion = rackData.anchoSeccionArray[seccionValida];
-    const paletsPorSeccion = rackData.paletsPorSeccionArray[seccionValida];
-    const anchuraRack = rackData.anchura;
-    const halfAncho = anchuraRack / 2;
-    const halfProf = rackData.halfProf;
+    // Encuentra la sección y el palet dentro de la sección
+    const paletSecuencial = parseInt(item.id.substring(2, 4), 10) - 1;
+    const { seccion, paletEnSeccion } = encontrarSeccionYPalet(paletsPorSeccionArray, paletSecuencial);
 
-    // Sumar los anchos previos para obtener el inicio de la sección
-    let xPosAcumulado = -anchuraRack / 2;
-    for (let i = 0; i < seccionValida; i++) {
-        xPosAcumulado += rackData.anchoSeccionArray[i];
+    // INVERTIR EL ÍNDICE DE SECCIÓN PARA QUE LOS MAYORES QUEDEN AL FRENTE
+   const numSecciones = rackData.anchoSeccionArray.length;
+    const seccionFrente = numSecciones - seccion - 1;
+
+    // Invertir los arrays para que el índice 0 sea la última sección visual
+    const anchoSeccionArrayInvertido = [...rackData.anchoSeccionArray].reverse();
+    const paletsPorSeccionArrayInvertido = [...paletsPorSeccionArray].reverse();
+
+    // Sumar los anchos previos para obtener el inicio de la sección (de derecha a izquierda)
+    let xPosAcumulado = -rackData.anchura / 2;
+    for (let i = 0; i < seccionFrente; i++) {
+        xPosAcumulado += anchoSeccionArrayInvertido[i];
     }
-    const inicioSeccion = xPosAcumulado;
-
+    const anchoSeccion = anchoSeccionArrayInvertido[seccionFrente];
+    const paletsEnEstaSeccion = paletsPorSeccionArrayInvertido[seccionFrente];
     // Ajustar dimensiones de palets para que quepan en la sección
     const configPalets = rackData.configPalets;
     const espacioNecesario = (2 * configPalets.margenSeccion) +
-        (paletsPorSeccion * configPalets.ancho) +
-        ((paletsPorSeccion - 1) * configPalets.separacion);
+        (paletsEnEstaSeccion * configPalets.ancho) +
+        ((paletsEnEstaSeccion - 1) * configPalets.separacion);
 
     let anchoPalet, separacion, margenAjustado;
     if (espacioNecesario <= anchoSeccion) {
@@ -2316,24 +2203,27 @@ function obtenerPosicionDesdeDatos(item) {
         margenAjustado = configPalets.margenSeccion + ((anchoSeccion - espacioNecesario) / 2);
     } else {
         separacion = 0.1;
-        anchoPalet = (anchoSeccion - (2 * 0.1) - ((paletsPorSeccion - 1) * separacion)) / paletsPorSeccion;
+        anchoPalet = (anchoSeccion - (2 * 0.1) - ((paletsEnEstaSeccion - 1) * separacion)) / paletsEnEstaSeccion;
         margenAjustado = 0.1;
     }
 
-    // Palet físico (posición dentro de la sección)
-    const paletValido = Math.min(Math.max(0, infoID.paletFisico), paletsPorSeccion - 1);
-
-    // Si es lado A (izquierda), invertir el orden de los palets
-   let paletPosicion = paletsPorSeccion - paletValido - 1;
-
-    // Sumar la posición física del rack
-    const posX = rackObj.position.x + inicioSeccion + margenAjustado +
+    // Para la cara A (izquierda), NO invertir el orden de los palets (mayores al frente)
+    let paletPosicion = paletsEnEstaSeccion - paletEnSeccion - 1;
+    // Calcular posición X del palet
+    const posX = rackObj.position.x + xPosAcumulado + margenAjustado +
         (paletPosicion * (anchoPalet + separacion)) + (anchoPalet / 2);
 
     // Z según lado
-    const zOffset = lado === "A" ? halfProf - 0.2 : -halfProf + 0.2;
+   const halfProf = rackData.halfProf;
+    let zOffset;
+   if (rackData.dobleCara) {
+    zOffset = lado === "A" ? halfProf - 0.2 : -halfProf + 0.2;
+    } else {
+        // Para rack A (una cara, frente): palet y caja en el centro (igual que posZPalet = 0)
+        // Para rack N (una cara, fondo): palet y caja en -halfProf + 0.2
+        zOffset = (rackData.letra === "N") ? -halfProf + 0.2 : 0;
+    }
     const posZ = rackObj.position.z + zOffset;
-
     // Y según nivel
     const espacioEntreNiveles = rackData.espacioEntreNiveles || (config.alturaCaja + 0.2);
     const posY = infoID.nivel * espacioEntreNiveles + (config.alturaCaja / 2);
@@ -2344,36 +2234,6 @@ function obtenerPosicionDesdeDatos(item) {
         z: posZ,
         orientacion: lado === "A" ? "invertida" : "normal"
     };
-}
-function debugSistemaExtendido() {
-    console.log('\n🔧 DEBUG DEL SISTEMA EXTENDIDO');
-    console.log('=============================');
-    
-    // Mostrar configuración
-    console.log('1. Configuración de racks:');
-    Object.entries(MAPA_RECORRIDO_EXTENDIDO.racks).forEach(([rack, config]) => {
-        console.log(`   ${rack}: ${config.seccionesReales} secciones, ${config.dobleCara ? 'doble' : 'una'} cara`);
-    });
-    
-    // Generar ejemplos de recorrido
-    generarEjemplosRecorrido();
-    
-    // Mostrar esquema completo
-    mostrarEsquemaRecorrido();
-    
-    return true;
-}
-
-// 11. INICIALIZACIÓN AUTOMÁTICA
-console.log('🚀 Sistema de Recorrido Extendido cargado y listo');
-console.log('💡 Usa debugSistemaExtendido() para ver ejemplos y esquemas');
-
-// Hacer funciones disponibles globalmente
-if (typeof window !== 'undefined') {
-    window.debugSistemaExtendido = debugSistemaExtendido;
-    window.validarIDExtendido = validarIDExtendido;
-    window.convertirIDsExistentes = convertirIDsExistentes;
-    window.generarEjemplosRecorrido = generarEjemplosRecorrido;
 }
 
 // Función unificada para crear etiquetas de cajas/palets
@@ -2620,6 +2480,14 @@ function crearPaletsVacios(cajasExistentes) {
                         lado: posFisica.lado
                     });
 
+                    if (
+                      HUECOS_RACKS[infoID.rack] &&
+                      HUECOS_RACKS[infoID.rack][posFisica.seccion + 1] && // secciones base 1
+                      HUECOS_RACKS[infoID.rack][posFisica.seccion + 1].includes(infoID.nivel)
+                    ) {
+                      return; // No crear palet vacío aquí
+                    }
+
                     const paletVacio = new THREE.Mesh(sharedGeometry, materialVacio);
                     paletVacio.position.set(posDatos.x, posDatos.y, posDatos.z);
                     paletVacio.material.opacity = 0.3;
@@ -2777,46 +2645,6 @@ function actualizarCajasDesdeAPI(datosAPI) {
     });
     
     console.log(`✅ Actualización desde API completada. Cajas PU pintadas de rojo.`);
-}
-// Función auxiliar para verificar IDs y posiciones
-function verificarPosicionesID(rackLetra) {
-    const rackObj = scene.children.find(obj => 
-        obj.userData?.tipoObjeto === 'rack' && 
-        obj.userData?.letra === rackLetra
-    );
-    
-    if (!rackObj) {
-        console.error(`No se encontró el rack ${rackLetra}`);
-        return;
-    }
-    
-    const rackData = rackObj.userData;
-    const numSecciones = rackData.numeroSecciones || rackData.secciones;
-    const dobleCara = rackData.dobleCara;
-    
-    console.log(`===== RACK ${rackLetra} =====`);
-    console.log(`Número de secciones: ${numSecciones}`);
-    console.log(`Doble cara: ${dobleCara ? 'Sí' : 'No'}`);
-    
-    // Mostrar esquema de IDs para ambas caras
-    console.log("\n--- ESQUEMA DE IDs ---");
-    console.log("Cara Frontal (A):");
-    for (let seccion = 0; seccion < numSecciones; seccion++) {
-        const idEjemplo = generarIDDesdePosicion(rackLetra, seccion, 0, 0, "A");
-        console.log(`  Sección ${seccion+1}: ${idEjemplo}`);
-    }
-    
-    if (dobleCara) {
-        console.log("\nCara Trasera (B):");
-        for (let seccion = 0; seccion < numSecciones; seccion++) {
-            const idEjemplo = generarIDDesdePosicion(rackLetra, seccion, 0, 0, "B");
-            console.log(`  Sección ${numSecciones-seccion}: ${idEjemplo} (corresponde a la sección ${seccion+1} vista desde atrás)`);
-        }
-    }
-    
-    // Total de posiciones disponibles
-    const totalPosiciones = numSecciones * (dobleCara ? 2 : 1);
-    console.log(`\nTotal de secciones numeradas: ${totalPosiciones}`);
 }
 
 
